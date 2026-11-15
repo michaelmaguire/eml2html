@@ -81,13 +81,15 @@ func main() {
 	remote := flag.Bool("remote", false, "with -single: let the message's HTML load remote images, styles and fonts (blocked by default)")
 	maxInline := flag.Int("max-inline", html.DefaultMaxInlineImageSize, "with -single: largest image, in bytes, embedded as a data: URI; negative disables")
 	maxDepth := flag.Int("max-depth", html.DefaultMaxDepth, "with -single: how deeply attached messages are rendered")
+	inline := flag.Bool("inline", false, "with -single: put the message's HTML straight into the page (cleaned, in a shadow root) instead of a frame, so the page fits it; only where the page itself is shown sandboxed, such as Forgejo's RENDER_CONTENT_MODE=iframe")
+	scriptSrc := flag.String("script-src", "", "with -inline: script-src of the page's Content-Security-Policy, for a script the host adds, e.g. 'sha256-...' (default 'none')")
 	sameOrigin := flag.Bool("same-origin", false, "with -single: give the message's frames the page's origin, so a script of the page can measure them (the message still can't run scripts); serve the output with a policy that allows no scripts")
 	flag.Usage = usage
 	flag.Parse()
 
 	if *single {
 		opts := &html.SingleOptions{AllowRemoteContent: *remote, MaxInlineImageSize: *maxInline, MaxDepth: *maxDepth,
-			SameOriginFrames: *sameOrigin}
+			SameOriginFrames: *sameOrigin, Inline: *inline, ScriptSrc: *scriptSrc}
 		if *maxInline == 0 {
 			opts.MaxInlineImageSize = -1 // an explicit 0 means none, not the default
 		}

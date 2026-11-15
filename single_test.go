@@ -264,3 +264,88 @@ func TestWriteDirUnchanged(t *testing.T) {
 	}
 	mustContain(t, string(index), `<iframe src="content/order.html"></iframe>`, `href="attachments/invoice.pdf"`)
 }
+
+var hostileMsg = crlf(`
+From: Shop <shop@example.com>
+To: Bob <bob@example.com>
+Subject: Hostile
+Date: Thu, 13 Aug 2026 08:00:00 +0200
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><head><title>t</title><meta http-equiv="refresh" content="0;url=https://evil.example/">
+<base href="https://evil.example/"><link rel="stylesheet" href="https://evil.example/x.css">
+<style>p { color: red }</style></head>
+<body bgcolor="#eeeeee" onload="steal()">
+<p onclick="steal()" style="font-weight:bold">Hello</p>
+<script>steal()</script>
+<a href="  java&#x09;script:steal()">bad</a>
+<a href="https://shop.example.com/order" target="_top">Order</a>
+<a href="data:text/html,<script>steal()</script>">doc</a>
+<img src="data:image/png;base64,` + pngB64 + `">
+<iframe src="https://evil.example/"></iframe>
+<object data="https://evil.example/x.swf"></object>
+<form action="https://evil.example/"><input name="pw"><button formaction="https://evil.example/">Go</button></form>
+<svg><a href="#"><set attributeName="href" to="javascript:steal()"/></a><script>steal()</script></svg>
+<!-- a comment -->
+</body></html>
+`)
+
+func TestSingleInline(t *testing.T) {
+	out := render(t, htmlMsg, &SingleOptions{Inline: true})
+	//no frame: the HTML is in a shadow root
+	mustNotContain(t, out, "<iframe", "srcdoc")
+	mustContain(t, out, `<div class="inline"><template shadowrootmode="open"><style>:host{`,
+		"Thanks for your order", `<img src="data:image/png;base64,`+pngB64+`"/>`)
+	//the page's policy: no scripts, nothing remote
+	mustContain(t, out, `<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; img-src data:;`,
+		"script-src &#39;none&#39;")
+	mustNotContain(t, out, "<script", "onclick", "steal")
+	//the remote image is left for the policy to block
+	mustContain(t, out, "https://tracker.example.com/open.gif")
+}
+
+func TestSingleInlineRemovesActiveContent(t *testing.T) {
+	out := render(t, hostileMsg, &SingleOptions{Inline: true})
+	mustNotContain(t, out, "steal", "evil.example", "refresh", "<script", "<iframe", "<object", "<form",
+		"<base", "<link", "<set", "data:text/html", "a comment", "_top", "<title>t</title>")
+	mustContain(t, out,
+		`<style>p { color: red }</style>`, //the message's own styles, inside the shadow root
+		`<div bgcolor="#eeeeee" class="eml2html-body">`,
+		`<p style="font-weight:bold">Hello</p>`,
+		`<a href="https://shop.example.com/order" target="_blank" rel="noopener noreferrer" title="https://shop.example.com/order">Order</a>`,
+		`<a>bad</a>`,
+		`<input name="pw"/><button>Go</button>`, //the form's fields stay; the form doesn't
+		`<img src="data:image/png;base64,`,
+	)
+}
+
+func TestSingleInlineOptions(t *testing.T) {
+	out := render(t, htmlMsg, &SingleOptions{Inline: true, ScriptSrc: "'sha256-abc='"})
+	mustContain(t, out, "script-src &#39;sha256-abc=&#39;")
+
+	out = render(t, htmlMsg, &SingleOptions{Inline: true, AllowRemoteContent: true})
+	mustContain(t, out, "img-src data: http: https:")
+
+	for _, bad := range []string{"'none'; img-src *", "a,b", `"x"`} {
+		if err := WriteSingle(new(bytes.Buffer), strings.NewReader(htmlMsg), &SingleOptions{Inline: true, ScriptSrc: bad}); err == nil {
+			t.Errorf("script-src %q: no error", bad)
+		}
+	}
+
+	//attached messages are shown open, since the page can't grow later
+	out = render(t, forwardMsg, &SingleOptions{Inline: true})
+	mustContain(t, out, "<details open><summary>Show attached message</summary>")
+
+	//without -inline: no page policy, frames as before, attached messages closed
+	out = render(t, htmlMsg, nil)
+	mustNotContain(t, out, `<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; img-src data:; style-src &#39;unsafe-inline&#39;; font-src data:; form-action`, "shadowrootmode")
+	out = render(t, forwardMsg, nil)
+	mustContain(t, out, "<details><summary>")
+}
+
+func TestSingleInlinePlainText(t *testing.T) {
+	out := render(t, textMsg, &SingleOptions{Inline: true})
+	mustContain(t, out, `<pre class="text">`, "1 &lt; 2")
+	mustNotContain(t, out, "shadowrootmode")
+}

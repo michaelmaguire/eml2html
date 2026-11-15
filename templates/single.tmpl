@@ -2,6 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="utf-8">
+        {{if .CSP}}<meta http-equiv="Content-Security-Policy" content="{{.CSP}}">{{end}}
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>{{.Subject}}</title>
         <style>
@@ -126,7 +127,7 @@ details {
             <li>
                 {{.Name}} <span class="meta">({{.Type}}, {{.Size}})</span>
                 {{if .ImageURL}}<img src="{{.ImageURL}}" alt="{{.Name}}">{{end}}
-                {{if .Message}}<details><summary>Show attached message</summary>{{.Message}}</details>{{end}}
+                {{if .Message}}{{if .Open}}<details open>{{else}}<details>{{end}}<summary>Show attached message</summary>{{.Message}}</details>{{end}}
             </li>
             {{end}}
         </ul>

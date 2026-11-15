@@ -41,6 +41,18 @@ type SingleOptions struct {
 	//to its content. The message still can't run scripts, but its HTML then shares the page's origin, so serve the
 	//output with a Content-Security-Policy that allows no scripts either.
 	SameOriginFrames bool
+
+	//Inline puts the message's HTML straight into the page, in a declarative shadow root (so its styles apply only
+	//to it), rather than in a sandboxed frame, so the page is as tall as the message. Scripts, embedded documents,
+	//event handlers and script URLs are removed, and the page gets a Content-Security-Policy that allows no scripts
+	//(but ScriptSrc) and, unless AllowRemoteContent, nothing from the network. Attached messages are shown open.
+	//Use it only where the page is itself shown in a sandbox with a unique origin, such as Forgejo's or Gitea's
+	//external renderers with RENDER_CONTENT_MODE=iframe: the message's HTML is cleaned, not isolated.
+	Inline bool
+
+	//ScriptSrc is the script-src of an Inline page's Content-Security-Policy, for scripts that whatever shows the
+	//page adds to it (for example the hash of Forgejo's frame-height script). Empty means 'none'.
+	ScriptSrc string
 }
 
 func (o *SingleOptions) maxInline() int {
@@ -61,6 +73,10 @@ func (o *SingleOptions) allowRemote() bool {
 	return o != nil && o.AllowRemoteContent
 }
 
+func (o *SingleOptions) inline() bool {
+	return o != nil && o.Inline
+}
+
 func (o *SingleOptions) frameSandbox() string {
 	if o != nil && o.SameOriginFrames {
 		return "allow-same-origin allow-popups allow-popups-to-escape-sandbox"
@@ -76,9 +92,11 @@ type singleAttachment struct {
 	Size     string
 	ImageURL template.URL
 	Message  template.HTML
+	Open     bool //an attached message is shown open
 }
 
 type singleMessage struct {
+	CSP         string //the page's Content-Security-Policy, if any
 	Subject     string
 	Date        string
 	From        string
@@ -101,9 +119,16 @@ func WriteSingle(w io.Writer, r io.Reader, opts *SingleOptions) error {
 		return fmt.Errorf("Unable to parse msg: %w", err)
 	}
 
+	if opts != nil && !validScriptSrc(opts.ScriptSrc) {
+		return fmt.Errorf("Invalid script-src: %q", opts.ScriptSrc)
+	}
+
 	m, err := buildSingle(msg, opts, 1)
 	if err != nil {
 		return err
+	}
+	if opts.inline() {
+		m.CSP = inlineCSP(opts)
 	}
 
 	if err := singleTmpl.ExecuteTemplate(w, "page", m); err != nil {
@@ -140,6 +165,14 @@ func buildSingle(msg *enmime.Envelope, opts *SingleOptions, depth int) (*singleM
 		if err != nil {
 			b = h
 		}
+		if opts.inline() {
+			body, err := inlineHTML(b)
+			if err != nil {
+				return nil, err
+			}
+			m.Bodies = append(m.Bodies, body)
+			continue
+		}
 		m.Bodies = append(m.Bodies, sandboxedHTML(b, opts))
 	}
 	if len(m.Bodies) == 0 {
@@ -174,7 +207,7 @@ func buildSingle(msg *enmime.Envelope, opts *SingleOptions, depth int) (*singleM
 }
 
 func singleAttachmentFor(p *enmime.Part, opts *SingleOptions, depth int) (*singleAttachment, error) {
-	a := &singleAttachment{Name: p.FileName, Type: p.ContentType, Size: formatSize(len(p.Content))}
+	a := &singleAttachment{Name: p.FileName, Type: p.ContentType, Size: formatSize(len(p.Content)), Open: opts.inline()}
 	if a.Name == "" {
 		a.Name = p.ContentType
 	}

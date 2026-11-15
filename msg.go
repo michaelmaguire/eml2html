@@ -133,6 +133,16 @@ func writeAttachments(root string, msg *enmime.Envelope) (attachments []*attachm
 	return attachments, contentIDMap, nil
 }
 
+//prefixedContentIDMap returns a copy of contentIDMap with prefix prepended to each value
+func prefixedContentIDMap(contentIDMap map[string]string, prefix string) map[string]string {
+	m := make(map[string]string, len(contentIDMap))
+	for id, fn := range contentIDMap {
+		m[id] = prefix + fn
+	}
+	return m
+}
+
+//rewriteHTML rewrites charsets to utf-8 and cid: links to the URLs in contentIDMap (content ID -> URL)
 func rewriteHTML(contentIDMap map[string]string, b []byte) ([]byte, error) {
 	r := bytes.NewReader(b)
 	doc, err := html.Parse(r)
@@ -163,7 +173,7 @@ func rewriteHTML(contentIDMap map[string]string, b []byte) ([]byte, error) {
 			if strings.ToLower(a.Key) == "src" && strings.HasPrefix(a.Val, "cid:") {
 				id := strings.TrimPrefix(a.Val, "cid:")
 				if dst, ok := contentIDMap[id]; ok {
-					a.Val = "../attachments/" + dst
+					a.Val = dst
 					n.Attr[idx] = a
 				}
 			}
@@ -221,8 +231,9 @@ func writeContent(root, name string, msg *enmime.Envelope, contentIDMap map[stri
 		txtContent = append(txtContent, fn)
 	}
 
+	linkMap := prefixedContentIDMap(contentIDMap, "../attachments/")
 	for i, b := range cleanHC {
-		h, err := rewriteHTML(contentIDMap, b)
+		h, err := rewriteHTML(linkMap, b)
 		if err != nil {
 			h = b
 		}

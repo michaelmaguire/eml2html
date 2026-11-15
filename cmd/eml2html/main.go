@@ -44,14 +44,56 @@ func (f *file) Close() error {
 
 func usage() {
 	fmt.Printf("Usage: %s -in /path/to/in -out /path/to/out\n", os.Args[0])
+	fmt.Printf("       %s -single [-in file.eml|-] [-out file.html|-]\n", os.Args[0])
 	flag.PrintDefaults()
+}
+
+//writeSingle renders one message as one self-contained HTML document. An empty path or "-" means stdin/stdout.
+func writeSingle(in, out string, opts *html.SingleOptions) error {
+	var r io.Reader = os.Stdin
+	if in != "" && in != "-" {
+		f, err := os.Open(in)
+		if err != nil {
+			return fmt.Errorf("Unable to open input: %w", err)
+		}
+		defer f.Close()
+		r = f
+	}
+
+	if out == "" || out == "-" {
+		return html.WriteSingle(os.Stdout, r, opts)
+	}
+
+	buf := new(bytes.Buffer)
+	if err := html.WriteSingle(buf, r, opts); err != nil {
+		return err
+	}
+	if err := os.WriteFile(out, buf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("Unable to write output: %w", err)
+	}
+	return nil
 }
 
 func main() {
 	input := flag.String("in", "", "input directory or file")
 	output := flag.String("out", "", "output directory for html. Will be created if it doesn't exist")
+	single := flag.Bool("single", false, "write one message as one self-contained HTML document. -in is an .eml file or - for stdin (the default), -out an .html file or - for stdout (the default)")
+	remote := flag.Bool("remote", false, "with -single: let the message's HTML load remote images, styles and fonts (blocked by default)")
+	maxInline := flag.Int("max-inline", html.DefaultMaxInlineImageSize, "with -single: largest image, in bytes, embedded as a data: URI; negative disables")
+	maxDepth := flag.Int("max-depth", html.DefaultMaxDepth, "with -single: how deeply attached messages are rendered")
 	flag.Usage = usage
 	flag.Parse()
+
+	if *single {
+		opts := &html.SingleOptions{AllowRemoteContent: *remote, MaxInlineImageSize: *maxInline, MaxDepth: *maxDepth}
+		if *maxInline == 0 {
+			opts.MaxInlineImageSize = -1 // an explicit 0 means none, not the default
+		}
+		if err := writeSingle(*input, *output, opts); err != nil {
+			log.Fatalln("Unable to render message:", err)
+		}
+		return
+	}
 
 	if *input == "" || *output == "" {
 		usage()

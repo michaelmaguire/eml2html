@@ -35,6 +35,12 @@ type SingleOptions struct {
 
 	//MaxDepth limits how deeply attached messages (message/rfc822) are rendered. 0 means DefaultMaxDepth.
 	MaxDepth int
+
+	//SameOriginFrames gives the frames holding the message's HTML the origin of the page they're in
+	//(sandbox allow-same-origin), so that a script of that page can measure them, for example to fit each frame
+	//to its content. The message still can't run scripts, but its HTML then shares the page's origin, so serve the
+	//output with a Content-Security-Policy that allows no scripts either.
+	SameOriginFrames bool
 }
 
 func (o *SingleOptions) maxInline() int {
@@ -53,6 +59,13 @@ func (o *SingleOptions) maxDepth() int {
 
 func (o *SingleOptions) allowRemote() bool {
 	return o != nil && o.AllowRemoteContent
+}
+
+func (o *SingleOptions) frameSandbox() string {
+	if o != nil && o.SameOriginFrames {
+		return "allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+	}
+	return "allow-popups allow-popups-to-escape-sandbox"
 }
 
 var singleTmpl = template.Must(template.ParseFS(tmpls, "templates/single.tmpl"))
@@ -205,7 +218,7 @@ func sandboxedHTML(b []byte, opts *SingleOptions) template.HTML {
 	} else {
 		doc = head + doc
 	}
-	return template.HTML(`<iframe class="html" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="` +
+	return template.HTML(`<iframe class="html" sandbox="` + opts.frameSandbox() + `" srcdoc="` +
 		html.EscapeString(doc) + `"></iframe>`)
 }
 

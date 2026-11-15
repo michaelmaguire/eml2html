@@ -81,11 +81,13 @@ func main() {
 	remote := flag.Bool("remote", false, "with -single: let the message's HTML load remote images, styles and fonts (blocked by default)")
 	maxInline := flag.Int("max-inline", html.DefaultMaxInlineImageSize, "with -single: largest image, in bytes, embedded as a data: URI; negative disables")
 	maxDepth := flag.Int("max-depth", html.DefaultMaxDepth, "with -single: how deeply attached messages are rendered")
+	sameOrigin := flag.Bool("same-origin", false, "with -single: give the message's frames the page's origin, so a script of the page can measure them (the message still can't run scripts); serve the output with a policy that allows no scripts")
 	flag.Usage = usage
 	flag.Parse()
 
 	if *single {
-		opts := &html.SingleOptions{AllowRemoteContent: *remote, MaxInlineImageSize: *maxInline, MaxDepth: *maxDepth}
+		opts := &html.SingleOptions{AllowRemoteContent: *remote, MaxInlineImageSize: *maxInline, MaxDepth: *maxDepth,
+			SameOriginFrames: *sameOrigin}
 		if *maxInline == 0 {
 			opts.MaxInlineImageSize = -1 // an explicit 0 means none, not the default
 		}

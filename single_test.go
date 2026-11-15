@@ -164,6 +164,13 @@ func TestSingleHTMLIsSandboxed(t *testing.T) {
 	mustNotContain(t, out, "Plain alternative.")
 }
 
+func TestSingleSameOriginFrames(t *testing.T) {
+	out := render(t, htmlMsg, &SingleOptions{SameOriginFrames: true})
+	mustContain(t, out, `<iframe class="html" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" srcdoc="`)
+	mustNotContain(t, out, "allow-scripts", "<script")
+	mustContain(t, out, "Content-Security-Policy") //remote content is still blocked
+}
+
 func TestSingleRemoteContentAllowed(t *testing.T) {
 	out := render(t, htmlMsg, &SingleOptions{AllowRemoteContent: true})
 	mustNotContain(t, out, "Content-Security-Policy")

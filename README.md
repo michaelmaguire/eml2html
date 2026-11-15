@@ -51,6 +51,7 @@ The output is one self-contained file: the headers, the message body, and a list
 * Remote images, styles and fonts are blocked (a Content-Security-Policy inside the frame), so opening a message can't be tracked. `-remote` allows them.
 * Images the HTML refers to by `cid:` are embedded as `data:` URIs, as are image attachments, up to `-max-inline` bytes each (default 1 MiB; negative disables). Larger ones are listed with their name, type and size.
 * Attached messages (`message/rfc822`) are rendered inside the page, up to `-max-depth` levels (default 3).
+* The frames have a fixed height (resizable), since without scripts a frame can't fit its content. A page that embeds the output and wants to fit them with its own script can pass `-same-origin`: the frames then get the page's origin (`sandbox="allow-same-origin ..."`), so the script can measure them. The message still can't run scripts, but its HTML then shares the page's origin, so a browser flaw in sandboxing would expose that origin: serve the output with a policy that allows no scripts either (for example `Content-Security-Policy: sandbox allow-same-origin allow-popups; default-src 'none'; style-src 'unsafe-inline'; img-src data:`).
 
 The library equivalent is `eml2html.WriteSingle(w, r, opts)`.
 
